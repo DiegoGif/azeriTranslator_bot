@@ -1,1 +1,1 @@
-python tg_azeri_translator_bot.py
+web: python tg_azeri_translator_bot.py
