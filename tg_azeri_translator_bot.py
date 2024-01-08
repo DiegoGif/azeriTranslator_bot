@@ -1,7 +1,7 @@
-
 import os
 import logging
 import requests
+import psycopg2
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from functools import wraps
@@ -10,6 +10,7 @@ from time import time
 # Fetch the OpenAI API key and Telegram token from environment variables
 openai_api_key = os.getenv('OPENAI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+DATABASE_URL = os.getenv('DATABASE_URL')  # Add this for PostgreSQL connection
 
 # Rate limiting settings
 RATE_LIMIT = 5  # seconds between messages
@@ -74,8 +75,30 @@ def translate_text(text, style='formal'):
         logging.error(f"Request failed: {e}")
         return "Sorry, I couldn't translate your text at this time."
 
+def save_user_to_database(user_data):
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    with conn.cursor() as cur:
+        # Create table if it doesn't exist
+        cur.execute('''CREATE TABLE IF NOT EXISTS users
+                       (user_id integer PRIMARY KEY, username text, first_name text, last_name text)''')
+
+        # Insert a new record if the user_id doesn't exist
+        cur.execute("INSERT INTO users (user_id, username, first_name, last_name) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id) DO NOTHING",
+                    (user_data['user_id'], user_data['username'], user_data['first_name'], user_data['last_name']))
+        conn.commit()
+    conn.close()
+
 @rate_limiting
 def handle_message(update, context):
+    user = update.effective_user
+    user_data = {
+        'user_id': user.id,
+        'username': user.username or '',
+        'first_name': user.first_name or '',
+        'last_name': user.last_name or ''
+    }
+    save_user_to_database(user_data)  # Save user to database
+
     input_text = update.message.text.strip()
     
     # If it's a style command from the button, update the style
